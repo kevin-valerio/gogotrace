@@ -66,6 +66,7 @@ Here are several concrete invocations:
 ./gogotrace -func "func Process()" -json output.json
 ./gogotrace -func "func main()" -html callgraph.html
 ./gogotrace -dir ~/myproject -func "func Init()" -no-test
+```
 
 ## Output formats
 
