@@ -21,6 +21,7 @@ func main() {
 		noTests     bool
 		help        bool
 		listFuncs   string
+		showParams  bool
 	)
 
 	flag.StringVar(&targetDir, "dir", ".", "Directory to analyze")
@@ -30,6 +31,7 @@ func main() {
 	flag.BoolVar(&noTests, "no-test", false, "Exclude test functions from results")
 	flag.BoolVar(&help, "help", false, "Show help message")
 	flag.StringVar(&listFuncs, "list", "", "List functions matching pattern")
+	flag.BoolVar(&showParams, "params", false, "Show function parameters in output")
 	var debug bool
 	flag.BoolVar(&debug, "debug", false, "Show debug information")
 
@@ -113,7 +115,7 @@ func main() {
 	if jsonOutput == "" && htmlOutput == "" {
 		fmt.Println("\nCall Graph:")
 		fmt.Println("===========")
-		formatter := output.NewConsoleFormatter(os.Stdout)
+		formatter := output.NewConsoleFormatter(os.Stdout, showParams)
 		if err := formatter.Format(callTree); err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
 			os.Exit(1)
@@ -140,6 +142,8 @@ func printUsage() {
 	fmt.Println("        Output results to HTML file")
 	fmt.Println("  -no-test")
 	fmt.Println("        Exclude test functions from results")
+	fmt.Println("  -params")
+	fmt.Println("        Show function parameters in output")
 	fmt.Println("  -help")
 	fmt.Println("        Show this help message")
 	fmt.Println()

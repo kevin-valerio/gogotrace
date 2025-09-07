@@ -22,6 +22,7 @@ type Function struct {
 	Line       int
 	IsTest     bool
 	FullPath   string
+	Parameters string
 }
 
 type CallSite struct {
@@ -219,12 +220,13 @@ func (a *Analyzer) createFunction(fn *ast.FuncDecl, packagePath, relPath string)
 	pos := a.fileSet.Position(fn.Pos())
 	
 	f := &Function{
-		Name:     fn.Name.Name,
-		Package:  packagePath,
-		File:     filepath.Base(relPath),
-		Line:     pos.Line,
-		IsTest:   a.isTestFunction(fn, relPath),
-		FullPath: relPath,
+		Name:       fn.Name.Name,
+		Package:    packagePath,
+		File:       filepath.Base(relPath),
+		Line:       pos.Line,
+		IsTest:     a.isTestFunction(fn, relPath),
+		FullPath:   relPath,
+		Parameters: a.extractParameters(fn),
 	}
 	
 	// Extract receiver
@@ -237,6 +239,40 @@ func (a *Analyzer) createFunction(fn *ast.FuncDecl, packagePath, relPath string)
 	f.Signature = a.buildSignature(fn)
 	
 	return f
+}
+
+func (a *Analyzer) extractParameters(fn *ast.FuncDecl) string {
+	var params []string
+	if fn.Type.Params != nil {
+		for _, field := range fn.Type.Params.List {
+			paramType := a.formatType(field.Type)
+			if len(field.Names) > 0 {
+				for _, name := range field.Names {
+					params = append(params, fmt.Sprintf("%s %s", name.Name, paramType))
+				}
+			} else {
+				params = append(params, paramType)
+			}
+		}
+	}
+	return fmt.Sprintf("(%s)", strings.Join(params, ", "))
+}
+
+func (a *Analyzer) extractParametersFromFuncLit(fn *ast.FuncLit) string {
+	var params []string
+	if fn.Type.Params != nil {
+		for _, field := range fn.Type.Params.List {
+			paramType := a.formatType(field.Type)
+			if len(field.Names) > 0 {
+				for _, name := range field.Names {
+					params = append(params, fmt.Sprintf("%s %s", name.Name, paramType))
+				}
+			} else {
+				params = append(params, paramType)
+			}
+		}
+	}
+	return fmt.Sprintf("(%s)", strings.Join(params, ", "))
 }
 
 func (a *Analyzer) buildSignature(fn *ast.FuncDecl) string {
@@ -560,12 +596,13 @@ func (a *Analyzer) createAnonymousFunction(fn *ast.FuncLit, parent *Function) *F
 	pos := a.fileSet.Position(fn.Pos())
 	
 	f := &Function{
-		Name:     fmt.Sprintf("func(...) in %s", parent.FullPath),
-		Package:  parent.Package,
-		File:     parent.File,
-		Line:     pos.Line,
-		IsTest:   parent.IsTest,
-		FullPath: parent.FullPath,
+		Name:       fmt.Sprintf("func(...) in %s", parent.FullPath),
+		Package:    parent.Package,
+		File:       parent.File,
+		Line:       pos.Line,
+		IsTest:     parent.IsTest,
+		FullPath:   parent.FullPath,
+		Parameters: a.extractParametersFromFuncLit(fn),
 	}
 	
 	// Build anonymous function signature
