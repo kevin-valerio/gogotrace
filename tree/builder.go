@@ -123,7 +123,11 @@ func (ct *CallTree) sortChildren(node *CallNode) {
 		if node.Children[i].Function.File != node.Children[j].Function.File {
 			return node.Children[i].Function.File < node.Children[j].Function.File
 		}
-		return node.Children[i].Function.Name < node.Children[j].Function.Name
+		if node.Children[i].Function.Name != node.Children[j].Function.Name {
+			return node.Children[i].Function.Name < node.Children[j].Function.Name
+		}
+		// Add line number for deterministic ordering of anonymous functions
+		return node.Children[i].Function.Line < node.Children[j].Function.Line
 	})
 }
 

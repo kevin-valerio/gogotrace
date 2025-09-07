@@ -101,16 +101,22 @@ const htmlTemplate = `<!DOCTYPE html>
         button:hover {
             background-color: #005a9e;
         }
-        .search-box {
-            padding: 8px;
-            width: 300px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
+        .node-wrapper.test-hidden {
+            display: none;
         }
-        .highlight {
-            background-color: #ffeb3b;
-            padding: 2px;
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
+        }
+        .footer a {
+            color: #007acc;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
@@ -123,10 +129,13 @@ const htmlTemplate = `<!DOCTYPE html>
     <div class="controls">
         <button onclick="expandAll()">Expand All</button>
         <button onclick="collapseAll()">Collapse All</button>
-        <input type="text" class="search-box" placeholder="Search functions..." onkeyup="searchFunctions(this.value)">
+        <button onclick="toggleTests()" id="testToggle">Hide Tests</button>
     </div>
     <div class="tree">
         {{.TreeHTML}}
+    </div>
+    <div class="footer">
+        <a href="https://github.com/kevin-valerio/gogotrace" target="_blank">GoGoTrace on GitHub</a>
     </div>
     <script>
         function toggleNode(element) {
@@ -155,26 +164,26 @@ const htmlTemplate = `<!DOCTYPE html>
             });
         }
 
-        function searchFunctions(query) {
-            const nodes = document.querySelectorAll('.node');
-            nodes.forEach(node => {
-                const text = node.textContent.toLowerCase();
-                const hasMatch = text.includes(query.toLowerCase());
-                
-                if (query === '') {
-                    node.innerHTML = node.innerHTML.replace(/<span class="highlight">(.*?)<\/span>/g, '$1');
-                } else if (hasMatch) {
-                    const regex = new RegExp('(' + query + ')', 'gi');
-                    node.innerHTML = node.innerHTML.replace(regex, '<span class="highlight">$1</span>');
-                }
-            });
+        let testsHidden = false;
+        function toggleTests() {
+            testsHidden = !testsHidden;
+            const button = document.getElementById('testToggle');
+            
+            if (testsHidden) {
+                button.textContent = 'Show Tests';
+                document.querySelectorAll('.test-indicator').forEach(indicator => {
+                    const nodeWrapper = indicator.closest('.node-wrapper');
+                    if (nodeWrapper) {
+                        nodeWrapper.classList.add('test-hidden');
+                    }
+                });
+            } else {
+                button.textContent = 'Hide Tests';
+                document.querySelectorAll('.node-wrapper.test-hidden').forEach(wrapper => {
+                    wrapper.classList.remove('test-hidden');
+                });
+            }
         }
-
-        document.querySelectorAll('.expandable').forEach(node => {
-            node.addEventListener('click', function() {
-                toggleNode(this);
-            });
-        });
     </script>
 </body>
 </html>`
@@ -235,12 +244,14 @@ func (hf *HTMLFormatter) buildTreeHTML(nodes []*tree.CallNode, ct *tree.CallTree
 func (hf *HTMLFormatter) buildNodeHTML(node *tree.CallNode, ct *tree.CallTree) string {
 	hasChildren := len(node.Children) > 0
 	
+	html := `<div class="node-wrapper">`
+	
 	nodeClass := "node"
 	if hasChildren {
 		nodeClass += " expandable"
 	}
 	
-	html := fmt.Sprintf(`<div class="%s">`, nodeClass)
+	html += fmt.Sprintf(`<div class="%s" onclick="toggleNode(this)">`, nodeClass)
 	
 	if node.Function.Receiver != "" {
 		html += fmt.Sprintf(`<span class="receiver">%s.</span>`, node.Function.Receiver)
@@ -265,6 +276,8 @@ func (hf *HTMLFormatter) buildNodeHTML(node *tree.CallNode, ct *tree.CallTree) s
 		html += hf.buildTreeHTML(node.Children, ct)
 		html += `</div>`
 	}
+	
+	html += `</div>`
 	
 	return html
 }

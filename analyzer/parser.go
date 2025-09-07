@@ -32,6 +32,7 @@ type CallSite struct {
 type Analyzer struct {
 	functions     sync.Map // thread-safe map[string]*Function
 	callGraph     sync.Map // thread-safe map[string][]*CallSite
+	callGraphMu   sync.Mutex // mutex for callGraph modifications
 	fileSet       *token.FileSet
 	baseDir       string
 	targetSig     string
@@ -327,92 +328,232 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 		// Method call: receiver.method()
 		methodName := fun.Sel.Name
 		
-		// Try to identify receiver type
-		var receiverType string
-		if ident, ok := fun.X.(*ast.Ident); ok {
+		// Try to identify receiver type more precisely
+		receiverVar := ""
+		receiverFieldAccess := false
+		
+		switch x := fun.X.(type) {
+		case *ast.Ident:
 			// Simple case: r.method()
-			receiverType = ident.Name
+			receiverVar = x.Name
+		case *ast.SelectorExpr:
+			// Field access: r.field.method()
+			// This is common for embedded structs or field access
+			receiverFieldAccess = true
+			// Try to get the field name as a hint
+			if _, ok := x.X.(*ast.Ident); ok {
+				// r.tracker.Method() - tracker might hint at InboxTracker
+				receiverVar = x.Sel.Name // Use field name as hint
+			}
 		}
 		
 		// Check local functions for matching methods first
 		found := false
 		for _, fn := range localFuncs {
 			if fn.Name == methodName && fn.Receiver != "" {
-				// Use heuristic: if receiver variable starts with same letter as type
-				if receiverType != "" && a.couldBeReceiver(receiverType, fn.Receiver) {
+				// If we have a receiver variable, try to match it
+				if receiverVar != "" {
+					if a.couldBeReceiver(receiverVar, fn.Receiver) {
+						a.addCallSite(caller, fn)
+						found = true
+					}
+				} else if receiverFieldAccess {
+					// For field access, be more lenient
 					a.addCallSite(caller, fn)
 					found = true
 				}
 			}
 		}
 		
-		// If not found locally, search globally for methods
+		// If not found locally, search globally
 		if !found && methodName != "" {
-			a.functions.Range(func(key, value interface{}) bool {
-				fn := value.(*Function)
-				if fn.Name == methodName && fn.Receiver != "" {
-					if receiverType == "" || a.couldBeReceiver(receiverType, fn.Receiver) {
-						a.addCallSite(caller, fn)
+			if receiverVar != "" {
+				// We have a receiver variable hint
+				var candidates []*Function
+				a.functions.Range(func(key, value interface{}) bool {
+					fn := value.(*Function)
+					if fn.Name == methodName && fn.Receiver != "" {
+						// Only add if receiver type could match based on variable name
+						if a.couldBeReceiver(receiverVar, fn.Receiver) {
+							candidates = append(candidates, fn)
+						}
+					}
+					return true
+				})
+				
+				// If we found exactly one candidate, use it
+				if len(candidates) == 1 {
+					a.addCallSite(caller, candidates[0])
+					found = true
+				} else if len(candidates) > 1 {
+					// Multiple candidates - try to be more selective
+					// Prefer candidates from the same package
+					for _, fn := range candidates {
+						if fn.Package == caller.Package {
+							a.addCallSite(caller, fn)
+							found = true
+							break
+						}
+					}
+					
+					// If still not found, pick the first one (better than nothing)
+					if !found && len(candidates) > 0 {
+						a.addCallSite(caller, candidates[0])
 						found = true
-						return false // Stop searching after first match
 					}
 				}
-				return true
-			})
+			} else if receiverFieldAccess {
+				// For field access without clear receiver, find any matching method
+				// This handles cases like obj.field.Method()
+				var candidates []*Function
+				a.functions.Range(func(key, value interface{}) bool {
+					fn := value.(*Function)
+					if fn.Name == methodName && fn.Receiver != "" {
+						candidates = append(candidates, fn)
+					}
+					return true
+				})
+				
+				// Be selective - prefer methods in same or related packages
+				for _, fn := range candidates {
+					if fn.Package == caller.Package {
+						a.addCallSite(caller, fn)
+						found = true
+						break
+					}
+				}
+				
+				// If not found in same package, look for commonly related types
+				if !found && len(candidates) == 1 {
+					// Only one candidate - probably the right one
+					a.addCallSite(caller, candidates[0])
+					found = true
+				}
+			}
 		}
 		
-		// Fallback: if still not found, try matching any method with the same name
-		if !found && methodName != "" {
-			a.functions.Range(func(key, value interface{}) bool {
-				fn := value.(*Function)
-				if fn.Name == methodName && fn.Receiver != "" {
-					a.addCallSite(caller, fn)
-					return false // Stop after first match to avoid performance issues
-				}
-				return true
-			})
-		}
+		// No fallback for ambiguous cases - this prevents false positives
 	}
 }
 
 func (a *Analyzer) couldBeReceiver(varName, receiverType string) bool {
-	// Improved heuristic for receiver matching
+	// More precise heuristic for receiver matching
 	receiverType = strings.TrimPrefix(receiverType, "*")
 	
-	if len(varName) > 0 && len(receiverType) > 0 {
-		varLower := strings.ToLower(varName)
-		typeLower := strings.ToLower(receiverType)
-		
-		// Exact match (case insensitive)
-		if varLower == typeLower {
-			return true
-		}
-		
-		// Common Go naming pattern: variable name is often first letter(s) of type
-		if strings.HasPrefix(varLower, typeLower[:1]) {
-			return true
-		}
-		
-		// Variable name contains the type (e.g., inboxMultiplexer contains inboxMultiplexer)
-		if strings.Contains(varLower, typeLower) {
-			return true
-		}
-		
-		// Type contains the variable name (e.g., multiplexer in inboxMultiplexer)
-		if strings.Contains(typeLower, varLower) {
-			return true
-		}
-		
-		// Check for common abbreviations
-		if strings.HasSuffix(typeLower, "multiplexer") && strings.Contains(varLower, "mux") {
-			return true
-		}
-		if strings.HasSuffix(typeLower, "multiplexer") && strings.Contains(varLower, "multiplexer") {
-			return true
+	if len(varName) == 0 || len(receiverType) == 0 {
+		return false
+	}
+	
+	varLower := strings.ToLower(varName)
+	typeLower := strings.ToLower(receiverType)
+	
+	// Exact match (case insensitive)
+	if varLower == typeLower {
+		return true
+	}
+	
+	// Common Go pattern: single letter variable matching first letter of type
+	if len(varName) == 1 && strings.HasPrefix(typeLower, varLower) {
+		// Special case for common single-letter receivers
+		// Only match if it's a plausible match
+		switch varLower {
+		case "r":
+			// r commonly used for Reader, Router, inboxMultiplexer, etc.
+			return strings.Contains(typeLower, "r") || 
+			       strings.Contains(typeLower, "reader") || 
+			       strings.Contains(typeLower, "router") ||
+			       strings.Contains(typeLower, "multiplexer")
+		case "m":
+			// m commonly used for Manager, Map, Multiplexer, etc.
+			return strings.Contains(typeLower, "m") || 
+			       strings.Contains(typeLower, "manager") || 
+			       strings.Contains(typeLower, "map") ||
+			       strings.Contains(typeLower, "multiplexer")
+		case "s":
+			// s commonly used for Server, Service, Store, etc.
+			return strings.Contains(typeLower, "s") || 
+			       strings.Contains(typeLower, "server") || 
+			       strings.Contains(typeLower, "service") ||
+			       strings.Contains(typeLower, "store")
+		case "c":
+			// c commonly used for Client, Controller, Context, etc.
+			return strings.Contains(typeLower, "c") || 
+			       strings.Contains(typeLower, "client") || 
+			       strings.Contains(typeLower, "controller") ||
+			       strings.Contains(typeLower, "context")
+		case "t":
+			// t commonly used for Tracker, etc.
+			return strings.Contains(typeLower, "t") || 
+			       strings.Contains(typeLower, "tracker")
+		case "i":
+			// i commonly used for InboxTracker, InboxReader, etc.
+			return strings.Contains(typeLower, "i") || 
+			       strings.Contains(typeLower, "inbox")
+		case "b":
+			// b commonly used for BatchPoster, etc.
+			return strings.Contains(typeLower, "b") || 
+			       strings.Contains(typeLower, "batch")
+		default:
+			// For other single letters, be more conservative
+			return strings.HasPrefix(typeLower, varLower)
 		}
 	}
 	
+	// Check for common abbreviations
+	if varLower == "mux" && strings.Contains(typeLower, "multiplexer") {
+		return true
+	}
+	
+	// Special case for simMux (simulation multiplexer) matching inboxMultiplexer
+	if varLower == "simmux" && strings.Contains(typeLower, "multiplexer") {
+		return true
+	}
+	
+	// Check if variable name is a suffix of the type (common pattern)
+	// e.g., "tracker" matches "InboxTracker"
+	if len(varName) > 3 && strings.HasSuffix(typeLower, varLower) {
+		return true
+	}
+	
+	// Variable is abbreviation of type (e.g., "im" for "InboxMultiplexer")
+	if len(varName) == 2 {
+		// Check if it could be initials
+		parts := splitCamelCase(receiverType)
+		if len(parts) >= 2 {
+			initials := strings.ToLower(string(parts[0][0]) + string(parts[1][0]))
+			if varLower == initials {
+				return true
+			}
+		}
+	}
+	
+	// Variable name is contained in type name
+	if len(varName) > 2 && strings.Contains(typeLower, varLower) {
+		return true
+	}
+	
 	return false
+}
+
+func splitCamelCase(s string) []string {
+	var result []string
+	var current []rune
+	
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			if len(current) > 0 {
+				result = append(result, string(current))
+				current = []rune{}
+			}
+		}
+		current = append(current, r)
+	}
+	
+	if len(current) > 0 {
+		result = append(result, string(current))
+	}
+	
+	return result
 }
 
 func (a *Analyzer) createAnonymousFunction(fn *ast.FuncLit, parent *Function) *Function {
@@ -462,6 +603,11 @@ func (a *Analyzer) addCallSite(caller, callee *Function) {
 	}
 	
 	calleeKey := a.getFunctionKey(callee)
+	callerKey := a.getFunctionKey(caller)
+	
+	// Lock to ensure atomic read-modify-write
+	a.callGraphMu.Lock()
+	defer a.callGraphMu.Unlock()
 	
 	// Get existing call sites
 	var callSites []*CallSite
@@ -470,7 +616,6 @@ func (a *Analyzer) addCallSite(caller, callee *Function) {
 	}
 	
 	// Check if this call site already exists
-	callerKey := a.getFunctionKey(caller)
 	for _, cs := range callSites {
 		if a.getFunctionKey(cs.Caller) == callerKey {
 			return
@@ -517,14 +662,7 @@ func (a *Analyzer) formatType(expr ast.Expr) string {
 }
 
 func (a *Analyzer) isTestFunction(fn *ast.FuncDecl, filename string) bool {
-	if strings.HasSuffix(filename, "_test.go") {
-		name := fn.Name.Name
-		return strings.HasPrefix(name, "Test") ||
-			strings.HasPrefix(name, "Benchmark") ||
-			strings.HasPrefix(name, "Example") ||
-			strings.HasPrefix(name, "Fuzz")
-	}
-	return false
+	return strings.HasSuffix(filename, "_test.go")
 }
 
 func (a *Analyzer) getFunctionKey(fn *Function) string {
