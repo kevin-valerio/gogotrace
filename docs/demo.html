@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoGoTrace - Call Graph</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        .info {
+            background-color: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .tree {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .node {
+            margin: 5px 0;
+            line-height: 1.6;
+        }
+        .expandable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .expandable::before {
+            content: '▶';
+            display: inline-block;
+            margin-right: 6px;
+            transition: transform 0.2s;
+        }
+        .expandable.expanded::before {
+            transform: rotate(90deg);
+        }
+        .children {
+            margin-left: 20px;
+            display: none;
+        }
+        .children.show {
+            display: block;
+        }
+        .function-name {
+            font-weight: bold;
+            color: #007acc;
+        }
+        .receiver {
+            color: #6a0dad;
+        }
+        .package {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .file {
+            color: #008000;
+        }
+        .usages {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .test-indicator {
+            background-color: #ffd93d;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        .search-box {
+            padding: 8px;
+            width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .highlight {
+            background-color: #ffeb3b;
+            padding: 2px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GoGoTrace - Reverse Call Graph</h1>
+    <div class="info">
+        <strong>Target Function:</strong> <span class="function-name">func (a *Analyzer) LoadPackages (dir string)</span><br>
+        <strong>Total Callers:</strong> 1
+    </div>
+    <div class="controls">
+        <button onclick="expandAll()">Expand All</button>
+        <button onclick="collapseAll()">Collapse All</button>
+        <input type="text" class="search-box" placeholder="Search functions..." onkeyup="searchFunctions(this.value)">
+    </div>
+    <div class="tree">
+        <div class="node"><span class="function-name">main</span> in <span class="package">.</span>/<span class="file">main.go</span></div>
+    </div>
+    <script>
+        function toggleNode(element) {
+            element.classList.toggle('expanded');
+            const children = element.nextElementSibling;
+            if (children && children.classList.contains('children')) {
+                children.classList.toggle('show');
+            }
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.expandable').forEach(node => {
+                node.classList.add('expanded');
+            });
+            document.querySelectorAll('.children').forEach(children => {
+                children.classList.add('show');
+            });
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.expandable').forEach(node => {
+                node.classList.remove('expanded');
+            });
+            document.querySelectorAll('.children').forEach(children => {
+                children.classList.remove('show');
+            });
+        }
+
+        function searchFunctions(query) {
+            const nodes = document.querySelectorAll('.node');
+            nodes.forEach(node => {
+                const text = node.textContent.toLowerCase();
+                const hasMatch = text.includes(query.toLowerCase());
+                
+                if (query === '') {
+                    node.innerHTML = node.innerHTML.replace(/<span class="highlight">(.*?)<\/span>/g, '$1');
+                } else if (hasMatch) {
+                    const regex = new RegExp('(' + query + ')', 'gi');
+                    node.innerHTML = node.innerHTML.replace(regex, '<span class="highlight">$1</span>');
+                }
+            });
+        }
+
+        document.querySelectorAll('.expandable').forEach(node => {
+            node.addEventListener('click', function() {
+                toggleNode(this);
+            });
+        });
+    </script>
+</body>
+</html>

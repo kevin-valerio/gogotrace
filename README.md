@@ -176,3 +176,8 @@ Machine-readable tree. Example shape:
 - Use `-no-test` to filter out noise from tests when exploring production call paths.
 - Use `-debug` to print extra diagnostics for the root-level analysis.
 
+
+## Demo
+
+- HTML preview: docs/demo.html
+- Open locally: `open docs/demo.html` (macOS) or serve the repo and browse to `/docs/demo.html`.
