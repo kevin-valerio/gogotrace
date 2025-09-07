@@ -13,13 +13,11 @@ If you're interested about Go security tooling, feel free to also have a look at
 
 ## Installation
 
-Build the CLI from source in this repository, then run the binary from your shell.
+Build the CLI from source in this repository, then run the binary from your shell. Go 1.21 or newer is required (see `go.mod`).
 
 ```bash
 go build -o gogotrace .
 ```
-
-Go 1.21 or newer is required (see `go.mod`).
 
 ## Quick start
 
@@ -99,15 +97,11 @@ The console view (the default) prints a readable tree to standard output. The HT
 }
 ```
 
-## How it works
-
-The analyzer walks the target directory recursively while skipping `vendor/`, `.git/`, `testdata/`, and `.work/`. Generated files ending in `.pb.go` and `_gen.go` are ignored. In the first phase, the tool extracts function and method declarations in parallel. In the second phase, it scans function bodies in parallel to assemble a reverse call graph. From the selected target signature, it then builds a reverse call tree by repeatedly finding callers, with cycle protection and a reasonable depth limit to keep results focused.
-
+ 
 ## Notes and limitations
 
-This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives, but they are typically useful for navigation and impact analysis.
+This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives.
 
 ## Troubleshooting
 
 If no callers are reported, confirm the exact signature using `-list` and double‑check the `-dir` value. When exploring production‑only paths, add `-no-test` to remove test callers. If you need extra detail while iterating, run with `-debug` to see information about the root and its immediate callers.
-
