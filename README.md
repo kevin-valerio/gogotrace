@@ -6,7 +6,7 @@ GoGoTrace is a Go reverse call‑graph analyzer. It scans a project, discovers w
 
 I built GoGoTrace because I could not find a Go tool that lets me start from an exact function signature and deterministically trace all of its callers, recursively, as a proper reverse call chain. Tools like go-callvis are useful for high‑level visualization, but they primarily produce an HTML call graph and typically require you to point at whole packages; they do not let you backtrace from a single function the way a debugger backtrace does. GoGoTrace fills that gap.
 
-It also fits LLM‑driven workflows. You can ask an LLM to inspect a particular function and then, using GoGoTrace’s reverse call tree as context, reason about how upstream callers may or may solve your problem. 
+It also fits LLM‑driven workflows. You can ask an LLM to inspect a particular function and then, using GoGoTrace’s reverse call tree as context, reason about how upstream callers may or may solve your problem.
 For example, as a security engineer, you might prompt: _“I believe there’s a bug in this function; search in every calling function whether there is a mitigation that would stop this bug.”_ Because LLMs are not reliable at exhaustively and deterministically enumerating callers, supplying the concrete call tree improves both accuracy and speed. In the same way, it can be useful for security researchers to search for the highest caller in the tree of given vulnerable specific function, to analyze if that is user/attacker-reachable or not.
 
 If you're interested about Go security tooling, feel free to also have a look at [go-panikint](https://github.com/kevin-valerio/go-panikint).
@@ -33,22 +33,7 @@ Point the tool at another project, trace a method by its signature, and exclude 
 ./gogotrace -dir ~/code/myproject -func "func (s *Server) Start(ctx context.Context)" -no-test
 ```
 
-Export results either as JSON or as an interactive HTML page:
 
-```bash
-./gogotrace -func "func Process()" -json callgraph.json
-./gogotrace -func "func main()" -html callgraph.html
-```
-
-Console output is an indented tree where depth reflects distance from the target function:
-
-```
-Call Graph:
-===========
-Service.Start in internal/service/service.go
-    Server.Run in cmd/api/server.go
-        main in cmd/api/main.go
-```
 
 ## Usage
 
@@ -105,6 +90,13 @@ The console view (the default) prints a readable tree to standard output. The HT
 ## Notes and limitations
 
 This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives.
+Some anonymous functions aren't caught. Let's take for example the following snippet. If `./gogotrace -func "func b()"` is called, `myPrivateFunc` won't be found. 
+```go
+	myPrivateFunc := func(a bool) bool {
+		b()
+		return false
+	}
+```
 
 ## Troubleshooting
 
