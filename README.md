@@ -2,16 +2,14 @@
 
 GoGoTrace is a Go reverse call‑graph analyzer. It scans a project, discovers who calls a given function or method, and renders a reverse call tree to the console, to JSON, or to an interactive HTML page. The analysis runs in parallel and is designed to handle large codebases efficiently.
 
-## Motivation
-
-
-## Motivation
+## Motivations
 
 I built GoGoTrace because I could not find a Go tool that lets me start from an exact function signature and deterministically trace all of its callers, recursively, as a proper reverse call chain. Tools like go-callvis are useful for high‑level visualization, but they primarily produce an HTML call graph and typically require you to point at whole packages; they do not let you backtrace from a single function the way a debugger backtrace does. GoGoTrace fills that gap.
 
-It also fits LLM‑driven workflows. You can ask an LLM to inspect a particular function and then, using GoGoTrace’s reverse call tree as context, reason about how upstream callers may or may not mitigate an issue. For example, you might prompt: “I believe there’s a bug in this function; search in every calling function whether there is a mitigation that would stop this bug.” Because LLMs are not reliable at exhaustively and deterministically enumerating callers, supplying the concrete call tree improves both accuracy and speed.
+It also fits LLM‑driven workflows. You can ask an LLM to inspect a particular function and then, using GoGoTrace’s reverse call tree as context, reason about how upstream callers may or may solve your problem. 
+For example, as a security engineer, you might prompt: _“I believe there’s a bug in this function; search in every calling function whether there is a mitigation that would stop this bug.”_ Because LLMs are not reliable at exhaustively and deterministically enumerating callers, supplying the concrete call tree improves both accuracy and speed. In the same way, it can be useful for security researchers to search for the highest caller in the tree of given vulnerable specific function, to analyze if that is user/attacker-reachable or not.
 
-If you have other use cases in mind, I’d love to hear them.
+If you're interested about Go security tooling, feel free to also have a look at [go-panikint](https://github.com/kevin-valerio/go-panikint).
 
 ## Installation
 
