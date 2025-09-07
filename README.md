@@ -1,55 +1,39 @@
 # GoGoTrace
 
-Go reverse call-graph analyzer that efficiently traces function dependencies across large Go codebases. It scans your project, finds who calls a given function or method, and renders the reverse call tree to the console, JSON, or an interactive HTML page.
-
-## Features
-
-- Reverse call graph for a target function or method
-- Fast parallel AST scanning across the repository
-- Multiple outputs: console (default), JSON (`-json`), and interactive HTML (`-html`)
-- Filter out test callers with `-no-test`
-- Discover candidates with substring search using `-list`
-- Helpful progress logs and `-debug` mode
+GoGoTrace is a Go reverse call‑graph analyzer. It scans a project, discovers who calls a given function or method, and renders a reverse call tree to the console, to JSON, or to an interactive HTML page. The analysis runs in parallel and is designed to handle large codebases efficiently.
 
 ## Installation
 
-Build from source in this repository:
+Build the CLI from source in this repository, then run the binary from your shell.
 
 ```bash
 go build -o gogotrace .
 ```
 
-Then run the binary with `./gogotrace` from your shell.
-
-> Requires Go 1.21+ (see `go.mod`).
+Go 1.21 or newer is required (see `go.mod`).
 
 ## Quick start
 
-- Trace a simple function in the current directory:
+Run the tool against the current directory and trace a simple function:
 
 ```bash
 ./gogotrace -func "func main()"
 ```
 
-- Trace a method in another project and exclude test callers:
+Point the tool at another project, trace a method by its signature, and exclude test callers:
 
 ```bash
-./gogotrace -dir ~/code/myproject \
-  -func "func (s *Server) Start(ctx context.Context)" \
-  -no-test
+./gogotrace -dir ~/code/myproject -func "func (s *Server) Start(ctx context.Context)" -no-test
 ```
 
-- Export results:
+Export results either as JSON or as an interactive HTML page:
 
 ```bash
-# JSON
 ./gogotrace -func "func Process()" -json callgraph.json
-
-# HTML (expand/collapse + search UI)
 ./gogotrace -func "func main()" -html callgraph.html
 ```
 
-Console output example (indentation shows caller depth):
+Console output is an indented tree where depth reflects distance from the target function:
 
 ```
 Call Graph:
@@ -61,22 +45,11 @@ Service.Start in internal/service/service.go
 
 ## Usage
 
-```bash
-gogotrace -func "<function signature>" [options]
-```
+The general form is `gogotrace -func "<function signature>" [options]`.
 
-### Options
+The most important flag is `-func`, which specifies the function or method signature to trace. The `-dir` flag sets the directory to analyze and defaults to the current directory. The tool can write JSON to a file via `-json <path>` and an interactive HTML page via `-html <path>`. Test callers can be removed from the output with `-no-test`. If you are unsure of the exact signature, use `-list <substring>` to print functions whose name or signature contains that substring. Extra diagnostics can be enabled with `-debug`. Pass `-help` to print the built‑in usage summary.
 
-- `-func string`: Function signature to trace (required unless using `-list`)
-- `-dir string`: Directory to analyze (default `.`)
-- `-json string`: Write the call tree to a JSON file
-- `-html string`: Write the call tree to an interactive HTML file
-- `-no-test`: Exclude test functions from the results
-- `-list string`: List functions whose name or signature contains the given substring
-- `-debug`: Print extra call-graph details for the root and first-level callers
-- `-help`: Show help and usage information
-
-Examples:
+Here are several concrete invocations:
 
 ```bash
 ./gogotrace -func "func (r *inboxMultiplexer) advanceSequencerMsg()"
@@ -86,47 +59,17 @@ Examples:
 ./gogotrace -dir ~/myproject -func "func Init()" -no-test
 ```
 
-### Function signature format and matching
+## Function signatures and matching
 
-Provide the target as a Go-style signature string. Return types are not part of matching (only name, optional receiver type, and parameter types):
+Provide targets as Go‑style signatures. Only the name, an optional receiver type, and the parameter types participate in matching; return types are intentionally ignored. Whitespace differences are normalized, and parameter names are ignored. Method receiver comparisons normalize pointer vs. non‑pointer receivers by type.
 
-- Simple functions: `func ProcessData()`
-- With parameters: `func Calculate(a int, b string)`
-- Method receivers: `func (s *Server) Start(ctx context.Context)`
-- Complex types: `func Handle(ctx context.Context, req *http.Request)`
+Examples of accepted targets include `func ProcessData()`, `func Calculate(a int, b string)`, `func (s *Server) Start(ctx context.Context)`, and `func Handle(ctx context.Context, req *http.Request)`.
 
-Matching details:
-
-- Parameter names are ignored; only the types must match and in the same order.
-- Receiver matching uses the receiver type (pointer vs non-pointer is normalized by type when comparing).
-- Whitespace differences are ignored.
-- Return types are ignored (signatures in this tool do not include returns).
-
-Tip: If you are unsure of the exact signature, run `-list "Name"` to find candidates:
-
-```bash
-./gogotrace -dir ~/code/myproject -list "Start"
-```
+If you do not know the exact signature, first print possible candidates using a substring search such as `./gogotrace -dir ~/code/myproject -list "Start"` and then copy the signature you want to trace.
 
 ## Output formats
 
-### Console (default)
-Indented tree of callers for your target function, printed to stdout.
-
-### HTML (`-html path`)
-Writes an interactive page with:
-- Expand/collapse controls
-- Search box to highlight matching function names
-- Per-node details: function/method name, package/file, usage counts, and a `TEST` badge for test callers
-
-Open the generated file in your browser:
-
-```bash
-open callgraph.html
-```
-
-### JSON (`-json path`)
-Machine-readable tree. Example shape:
+The console view (the default) prints a readable tree to standard output. The HTML view (`-html <path>`) writes an interactive page that supports expanding and collapsing nodes and a client‑side search box that highlights matching function names. The JSON view (`-json <path>`) writes a machine‑readable tree. A representative JSON fragment looks like the following:
 
 ```json
 {
@@ -155,29 +98,15 @@ Machine-readable tree. Example shape:
 }
 ```
 
-## How it works (high level)
+## How it works
 
-- Scans the target directory (recursively), excluding `vendor/`, `.git/`, `testdata/`, and `.work/`.
-- Skips generated files ending in `.pb.go` and `_gen.go`.
-- Phase 1 (parallel): extracts all function and method declarations.
-- Phase 2 (parallel): builds a reverse call graph by scanning function bodies for call sites.
-- Constructs a reverse call tree from the target up through its callers, recursively.
+The analyzer walks the target directory recursively while skipping `vendor/`, `.git/`, `testdata/`, and `.work/`. Generated files ending in `.pb.go` and `_gen.go` are ignored. In the first phase, the tool extracts function and method declarations in parallel. In the second phase, it scans function bodies in parallel to assemble a reverse call graph. From the selected target signature, it then builds a reverse call tree by repeatedly finding callers, with cycle protection and a reasonable depth limit to keep results focused.
 
 ## Notes and limitations
 
-- Best-effort static analysis based on the Go AST; it does not type-check or fully resolve packages.
-- Method resolution uses naming heuristics for receiver identification; interface dispatch and some dynamic patterns may be missed.
-- Results can include false positives/negatives in complex scenarios.
-- Depth is bounded to avoid runaway graphs in large projects (current limit ~20 levels).
+This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives, but they are typically useful for navigation and impact analysis.
 
 ## Troubleshooting
 
-- If no callers are found, verify the signature using `-list`, and ensure you are analyzing the correct `-dir`.
-- Use `-no-test` to filter out noise from tests when exploring production call paths.
-- Use `-debug` to print extra diagnostics for the root-level analysis.
+If no callers are reported, confirm the exact signature using `-list` and double‑check the `-dir` value. When exploring production‑only paths, add `-no-test` to remove test callers. If you need extra detail while iterating, run with `-debug` to see information about the root and its immediate callers.
 
-
-## Demo
-
-- HTML preview: docs/demo.html
-- Open locally: `open docs/demo.html` (macOS) or serve the repo and browse to `/docs/demo.html`.
