@@ -97,7 +97,11 @@ The console view (the default) prints a readable tree to standard output. The HT
 }
 ```
 
- 
+#### Generated HTML example:
+
+![html example](doc/example_html.png "Example")
+
+
 ## Notes and limitations
 
 This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives.
