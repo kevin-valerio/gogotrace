@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -10,19 +11,33 @@ func (a *Analyzer) FindCallers(targetSignature string, excludeTests bool) ([]*Ca
 	
 	var targetFunc *Function
 	var allCallSites []*CallSite
+	var matchingFunctions []*Function
 	
 	// Search through all functions for matching signature
 	a.functions.Range(func(key, value interface{}) bool {
 		fn := value.(*Function)
 		if a.matchesSignature(fn, targetSignature) {
-			targetFunc = fn
-			fnKey := a.getFunctionKey(fn)
-			if sites, ok := a.callGraph.Load(fnKey); ok {
-				allCallSites = append(allCallSites, sites.([]*CallSite)...)
-			}
+			matchingFunctions = append(matchingFunctions, fn)
 		}
 		return true
 	})
+	
+	// Sort matching functions for deterministic behavior
+	if len(matchingFunctions) > 0 {
+		// Sort by function key to ensure consistent ordering
+		sort.Slice(matchingFunctions, func(i, j int) bool {
+			return a.getFunctionKey(matchingFunctions[i]) < a.getFunctionKey(matchingFunctions[j])
+		})
+		
+		// Use the first matching function as the target
+		targetFunc = matchingFunctions[0]
+		
+		// Collect call sites from the first matching function only
+		fnKey := a.getFunctionKey(targetFunc)
+		if sites, ok := a.callGraph.Load(fnKey); ok {
+			allCallSites = append(allCallSites, sites.([]*CallSite)...)
+		}
+	}
 	
 	if targetFunc == nil {
 		return nil, fmt.Errorf("function with signature '%s' not found", targetSignature)

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -417,6 +418,11 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 					return true
 				})
 				
+				// Sort candidates for deterministic behavior
+				sort.Slice(candidates, func(i, j int) bool {
+					return a.getFunctionKey(candidates[i]) < a.getFunctionKey(candidates[j])
+				})
+				
 				// If we found exactly one candidate, use it
 				if len(candidates) == 1 {
 					a.addCallSite(caller, candidates[0])
@@ -448,6 +454,11 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 						candidates = append(candidates, fn)
 					}
 					return true
+				})
+				
+				// Sort candidates for deterministic behavior
+				sort.Slice(candidates, func(i, j int) bool {
+					return a.getFunctionKey(candidates[i]) < a.getFunctionKey(candidates[j])
 				})
 				
 				// Be selective - prefer methods in same or related packages
