@@ -26,3 +26,79 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Run E2E Integration Tests
+      run: |
+        cd tests
+        go test -v -run TestEndToEnd
+        go test -v -run TestSpecificFunctions
+
+    - name: Test with Coverage
+      run: go test -v -coverprofile=coverage.out ./...
+
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: coverage-report
+        path: coverage.out
+
+    - name: Build Binary for Multiple Platforms
+      run: |
+        GOOS=linux GOARCH=amd64 go build -o gogotrace-linux-amd64
+        GOOS=darwin GOARCH=amd64 go build -o gogotrace-darwin-amd64
+        GOOS=windows GOARCH=amd64 go build -o gogotrace-windows-amd64.exe
+
+    - name: Test Binary Execution
+      run: |
+        ./gogotrace-linux-amd64 -help
+
+    - name: Integration Test - Console Output
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "TargetFunction"
+
+    - name: Integration Test - JSON Output
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "TargetFunction" -json /tmp/output.json
+        cat /tmp/output.json | jq '.' > /dev/null
+
+    - name: Integration Test - HTML Output
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "TargetFunction" -html /tmp/output.html
+        test -s /tmp/output.html
+
+    - name: Integration Test - Debug Mode
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "TargetFunction" -debug > /tmp/debug.log 2>&1
+        grep -q "Phase 1" /tmp/debug.log
+        grep -q "Phase 2" /tmp/debug.log
+
+    - name: Integration Test - Method with Receiver
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "func (s *Service) Execute ()"
+
+    - name: Integration Test - Recursive Function Detection
+      run: |
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "RecursiveCaller" -json /tmp/recursive.json
+        cat /tmp/recursive.json | jq '.children[] | select(.name == "RecursiveCaller")' | grep -q "RecursiveCaller"
+
+    - name: Integration Test - Multiple Output Formats
+      run: |
+        mkdir -p /tmp/gogotrace-test
+        ./gogotrace-linux-amd64 -dir tests/fixtures/testproject -func "TargetFunction" \
+          -json /tmp/gogotrace-test/output.json \
+          -html /tmp/gogotrace-test/output.html
+        test -s /tmp/gogotrace-test/output.json
+        test -s /tmp/gogotrace-test/output.html
+
+    - name: Upload Test Artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-outputs
+        path: |
+          /tmp/output.json
+          /tmp/output.html
+          /tmp/recursive.json
+          /tmp/debug.log
+          /tmp/gogotrace-test/
