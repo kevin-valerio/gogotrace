@@ -357,7 +357,7 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 		for _, fn := range localFuncs {
 			if fn.Name == targetName && fn.Receiver == "" {
 				a.addCallSite(caller, fn)
-				return
+				break
 			}
 		}
 		
@@ -383,6 +383,7 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 				receiverVar = x.Sel.Name // Use field name as hint
 			}
 		}
+		
 		
 		// Check local functions for matching methods first
 		found := false
@@ -481,6 +482,122 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 		
 		// No fallback for ambiguous cases - this prevents false positives
 	}
+	
+	// Process arguments to detect method values
+	// This handles cases like LaunchThread(b.pollForL1PriceData) where pollForL1PriceData is passed as a method value
+	for _, arg := range call.Args {
+		a.processMethodValue(arg, caller, localFuncs)
+	}
+}
+
+// processMethodValue handles method values passed as arguments (e.g., b.method in func(b.method))
+func (a *Analyzer) processMethodValue(expr ast.Expr, caller *Function, localFuncs []*Function) {
+	switch v := expr.(type) {
+	case *ast.SelectorExpr:
+		// This could be a method value: receiver.method (without parentheses)
+		methodName := v.Sel.Name
+		
+		// Try to identify receiver type
+		receiverVar := ""
+		receiverFieldAccess := false
+		
+		switch x := v.X.(type) {
+		case *ast.Ident:
+			// Simple case: b.method
+			receiverVar = x.Name
+		case *ast.SelectorExpr:
+			// Field access: obj.field.method
+			receiverFieldAccess = true
+			if _, ok := x.X.(*ast.Ident); ok {
+				receiverVar = x.Sel.Name
+			}
+		}
+		
+		// Check local functions for matching methods first
+		found := false
+		for _, fn := range localFuncs {
+			if fn.Name == methodName && fn.Receiver != "" {
+				if receiverVar != "" {
+					if a.couldBeReceiver(receiverVar, fn.Receiver) {
+						a.addCallSite(caller, fn)
+						found = true
+					}
+				} else if receiverFieldAccess {
+					a.addCallSite(caller, fn)
+					found = true
+				}
+			}
+		}
+		
+		// If not found locally, search globally
+		if !found && methodName != "" {
+			if receiverVar != "" {
+				var candidates []*Function
+				a.functions.Range(func(key, value interface{}) bool {
+					fn := value.(*Function)
+					if fn.Name == methodName && fn.Receiver != "" {
+						if a.couldBeReceiver(receiverVar, fn.Receiver) {
+							candidates = append(candidates, fn)
+						}
+					}
+					return true
+				})
+				
+				// Sort candidates for deterministic behavior
+				sort.Slice(candidates, func(i, j int) bool {
+					return a.getFunctionKey(candidates[i]) < a.getFunctionKey(candidates[j])
+				})
+				
+				// If we found exactly one candidate, use it
+				if len(candidates) == 1 {
+					a.addCallSite(caller, candidates[0])
+					found = true
+				} else if len(candidates) > 1 {
+					// Prefer candidates from the same package
+					for _, fn := range candidates {
+						if fn.Package == caller.Package {
+							a.addCallSite(caller, fn)
+							found = true
+							break
+						}
+					}
+					
+					// If still not found, pick the first one
+					if !found && len(candidates) > 0 {
+						a.addCallSite(caller, candidates[0])
+						found = true
+					}
+				}
+			} else if receiverFieldAccess {
+				var candidates []*Function
+				a.functions.Range(func(key, value interface{}) bool {
+					fn := value.(*Function)
+					if fn.Name == methodName && fn.Receiver != "" {
+						candidates = append(candidates, fn)
+					}
+					return true
+				})
+				
+				sort.Slice(candidates, func(i, j int) bool {
+					return a.getFunctionKey(candidates[i]) < a.getFunctionKey(candidates[j])
+				})
+				
+				// Prefer methods in same package
+				for _, fn := range candidates {
+					if fn.Package == caller.Package {
+						a.addCallSite(caller, fn)
+						found = true
+						break
+					}
+				}
+				
+				if !found && len(candidates) == 1 {
+					a.addCallSite(caller, candidates[0])
+					found = true
+				}
+			}
+		}
+	}
 }
 
 func (a *Analyzer) couldBeReceiver(varName, receiverType string) bool {
@@ -500,9 +617,9 @@ func (a *Analyzer) couldBeReceiver(varName, receiverType string) bool {
 	}
 	
 	// Common Go pattern: single letter variable matching first letter of type
-	if len(varName) == 1 && strings.HasPrefix(typeLower, varLower) {
+	if len(varName) == 1 {
 		// Special case for common single-letter receivers
-		// Only match if it's a plausible match
+		// Check if it's a plausible match even if type doesn't start with the letter
 		switch varLower {
 		case "r":
 			// r commonly used for Reader, Router, inboxMultiplexer, etc.
@@ -540,6 +657,17 @@ func (a *Analyzer) couldBeReceiver(varName, receiverType string) bool {
 			// b commonly used for BatchPoster, etc.
 			return strings.Contains(typeLower, "b") || 
 			       strings.Contains(typeLower, "batch")
+		case "p":
+			// p commonly used for Poster, DataPoster, ParentChain, Parser, etc.
+			return strings.Contains(typeLower, "p") || 
+			       strings.Contains(typeLower, "poster") || 
+			       strings.Contains(typeLower, "parent") ||
+			       strings.Contains(typeLower, "parser")
+		case "d":
+			// d commonly used for DataPoster, Database, etc.
+			return strings.Contains(typeLower, "d") || 
+			       strings.Contains(typeLower, "data") || 
+			       strings.Contains(typeLower, "database")
 		default:
 			// For other single letters, be more conservative
 			return strings.HasPrefix(typeLower, varLower)

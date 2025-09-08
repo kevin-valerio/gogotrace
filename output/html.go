@@ -135,7 +135,7 @@ const htmlTemplate = `<!DOCTYPE html>
         {{.TreeHTML}}
     </div>
     <div class="footer">
-        <a href="https://github.com/kevin-valerio/gogotrace" target="_blank">GoGoTrace on GitHub</a>
+        <a href="https://github.com/kevin-valerio/gogotrace" target="_blank">GoGoTrace on GitHub - Kevin VALERIO</a>
     </div>
     <script>
         function toggleNode(element) {
@@ -168,7 +168,7 @@ const htmlTemplate = `<!DOCTYPE html>
         function toggleTests() {
             testsHidden = !testsHidden;
             const button = document.getElementById('testToggle');
-            
+
             if (testsHidden) {
                 button.textContent = 'Show Tests';
                 document.querySelectorAll('.test-indicator').forEach(indicator => {
@@ -206,26 +206,26 @@ func (hf *HTMLFormatter) Format(callTree *tree.CallTree) error {
 	if callTree.Root == nil {
 		return nil
 	}
-	
+
 	treeHTML := hf.buildTreeHTML(callTree.Root.Children, callTree)
-	
+
 	data := HTMLData{
 		TargetSignature: callTree.Root.Function.Signature,
 		TotalCallers:    hf.countTotalCallers(callTree.Root),
 		TreeHTML:        template.HTML(treeHTML),
 	}
-	
+
 	tmpl, err := template.New("callgraph").Parse(htmlTemplate)
 	if err != nil {
 		return err
 	}
-	
+
 	file, err := os.Create(hf.outputFile)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	
+
 	return tmpl.Execute(file, data)
 }
 
@@ -233,7 +233,7 @@ func (hf *HTMLFormatter) buildTreeHTML(nodes []*tree.CallNode, ct *tree.CallTree
 	if len(nodes) == 0 {
 		return ""
 	}
-	
+
 	html := ""
 	for _, node := range nodes {
 		html += hf.buildNodeHTML(node, ct)
@@ -243,42 +243,42 @@ func (hf *HTMLFormatter) buildTreeHTML(nodes []*tree.CallNode, ct *tree.CallTree
 
 func (hf *HTMLFormatter) buildNodeHTML(node *tree.CallNode, ct *tree.CallTree) string {
 	hasChildren := len(node.Children) > 0
-	
+
 	html := `<div class="node-wrapper">`
-	
+
 	nodeClass := "node"
 	if hasChildren {
 		nodeClass += " expandable"
 	}
-	
+
 	html += fmt.Sprintf(`<div class="%s" onclick="toggleNode(this)">`, nodeClass)
-	
+
 	if node.Function.Receiver != "" {
 		html += fmt.Sprintf(`<span class="receiver">%s.</span>`, node.Function.Receiver)
 	}
 	html += fmt.Sprintf(`<span class="function-name">%s</span>`, node.Function.Name)
-	
+
 	if node.Usages > 1 {
 		html += fmt.Sprintf(` <span class="usages">(%d usages)</span>`, node.Usages)
 	}
-	
-	html += fmt.Sprintf(` in <span class="package">%s</span>/<span class="file">%s</span>`, 
+
+	html += fmt.Sprintf(` in <span class="package">%s</span>/<span class="file">%s</span>`,
 		node.Function.Package, node.Function.File)
-	
+
 	if node.Function.IsTest {
 		html += `<span class="test-indicator">TEST</span>`
 	}
-	
+
 	html += `</div>`
-	
+
 	if hasChildren {
 		html += `<div class="children">`
 		html += hf.buildTreeHTML(node.Children, ct)
 		html += `</div>`
 	}
-	
+
 	html += `</div>`
-	
+
 	return html
 }
 
@@ -295,7 +295,7 @@ func (hf *HTMLFormatter) countCallersRecursive(node *tree.CallNode, count *int, 
 		return
 	}
 	visited[key] = true
-	
+
 	*count += len(node.Children)
 	for _, child := range node.Children {
 		hf.countCallersRecursive(child, count, visited)

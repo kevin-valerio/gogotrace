@@ -90,6 +90,7 @@ The console view (the default) prints a readable tree to standard output. The HT
 ## Notes and limitations
 
 This is a best‑effort static analysis based on the Go AST and does not perform full type checking or package resolution. Method resolution uses receiver‑name heuristics, which means dynamic dispatch through interfaces and some complex patterns may be missed. In very large or highly dynamic codebases the results can contain false positives or false negatives.
+
 Some anonymous functions aren't caught. Let's take for example the following snippet. If `./gogotrace -func "func b()"` is called, `myPrivateFunc` won't be found.
 ```go
 myPrivateFunc := func(a bool) bool {
@@ -97,6 +98,8 @@ myPrivateFunc := func(a bool) bool {
 	return false
 }
 ```
+
+Method values passed as arguments are detected, but indirect calls through function variables may not be fully traced through complex call chains.
 
 ## Troubleshooting
 
