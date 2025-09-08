@@ -14,14 +14,14 @@ import (
 
 func main() {
 	var (
-		targetDir   string
-		signature   string
-		jsonOutput  string
-		htmlOutput  string
-		noTests     bool
-		help        bool
-		listFuncs   string
-		showParams  bool
+		targetDir  string
+		signature  string
+		jsonOutput string
+		htmlOutput string
+		noTests    bool
+		help       bool
+		listFuncs  string
+		showParams bool
 	)
 
 	flag.StringVar(&targetDir, "dir", ".", "Directory to analyze")
@@ -61,14 +61,14 @@ func main() {
 	fmt.Println()
 
 	a := analyzer.NewAnalyzer()
-	
+
 	if err := a.LoadPackages(targetDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading packages: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println()
-	
+
 	if listFuncs != "" {
 		fmt.Println("Functions matching pattern:")
 		for _, fn := range a.GetFunctions() {
@@ -84,7 +84,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error building call tree: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	if debug {
 		fmt.Println("\nDebug: Call graph analysis")
 		fmt.Printf("Root function: %s\n", callTree.Root.Function.Name)
@@ -113,8 +113,8 @@ func main() {
 	}
 
 	if jsonOutput == "" && htmlOutput == "" {
-		fmt.Println("\nCall Graph:")
-		fmt.Println("===========")
+		fmt.Println("\n┌─ Reverse Call Graph")
+		fmt.Println("└───────────────────────────────────────────────────")
 		formatter := output.NewConsoleFormatter(os.Stdout, showParams)
 		if err := formatter.Format(callTree); err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
