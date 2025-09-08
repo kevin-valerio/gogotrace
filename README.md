@@ -86,8 +86,11 @@ The console view (the default) prints a readable tree to standard output. The HT
 
 #### Generated HTML example:
 
-![html example](doc/example_html.png "Example")
+![html example](doc/example_html.png "HTML Example")
 
+#### Standard output example:
+
+![stdout example](doc/example_stdout.png "STDOUT Example")
 
 ## Notes and limitations
 
