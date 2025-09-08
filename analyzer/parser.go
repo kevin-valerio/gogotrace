@@ -41,12 +41,37 @@ type Analyzer struct {
 	targetFound   atomic.Bool
 	filesScanned  atomic.Int32
 	funcsFound    atomic.Int32
+	progressMu    sync.Mutex // mutex for progress bar updates
 }
 
 func NewAnalyzer() *Analyzer {
 	return &Analyzer{
 		fileSet: token.NewFileSet(),
 	}
+}
+
+// renderProgressBar creates a visual progress bar
+func renderProgressBar(current, total int, label string, width int) string {
+	if total == 0 {
+		return fmt.Sprintf("\r%s: [%s] 0/0", label, strings.Repeat(" ", width))
+	}
+	
+	percentage := float64(current) / float64(total)
+	filled := int(percentage * float64(width))
+	if filled > width {
+		filled = width
+	}
+	
+	bar := strings.Repeat("=", filled)
+	if filled < width && current < total {
+		bar += ">"
+		bar += strings.Repeat(" ", width-filled-1)
+	} else if filled < width {
+		bar += strings.Repeat(" ", width-filled)
+	}
+	
+	return fmt.Sprintf("\r%s: [%s] %d/%d (%.1f%%)", 
+		label, bar, current, total, percentage*100)
 }
 
 func (a *Analyzer) LoadPackages(dir string) error {
@@ -94,9 +119,12 @@ func (a *Analyzer) LoadPackages(dir string) error {
 			defer wg.Done()
 			for filePath := range fileChan {
 				a.parseFileFunctionDefs(filePath)
-				count := a.filesScanned.Add(1)
-				if count%100 == 0 {
-					fmt.Printf("  Extracted from %d/%d files...\n", count, len(allFiles))
+				count := int(a.filesScanned.Add(1))
+				// Update progress bar more frequently for smoother animation
+				if count%10 == 0 || count == len(allFiles) {
+					a.progressMu.Lock()
+					fmt.Printf("\r%s", renderProgressBar(count, len(allFiles), "  Extracting", 40))
+					a.progressMu.Unlock()
 				}
 			}
 		}(i)
@@ -111,6 +139,9 @@ func (a *Analyzer) LoadPackages(dir string) error {
 	// Wait for all workers to finish
 	wg.Wait()
 	
+	// Final progress bar at 100%
+	fmt.Printf("\r%s", renderProgressBar(len(allFiles), len(allFiles), "  Extracting", 40))
+	fmt.Println() // New line after progress bar
 	fmt.Printf("Phase 1 complete: %d functions found\n", a.funcsFound.Load())
 	
 	// Phase 2: Build call graph in parallel
@@ -126,9 +157,12 @@ func (a *Analyzer) LoadPackages(dir string) error {
 			defer wg.Done()
 			for filePath := range fileChan2 {
 				a.parseFileCallGraph(filePath)
-				count := a.filesScanned.Add(1)
-				if count%100 == 0 {
-					fmt.Printf("  Call graph from %d/%d files...\n", count, len(allFiles))
+				count := int(a.filesScanned.Add(1))
+				// Update progress bar more frequently for smoother animation
+				if count%10 == 0 || count == len(allFiles) {
+					a.progressMu.Lock()
+					fmt.Printf("\r%s", renderProgressBar(count, len(allFiles), "  Building", 40))
+					a.progressMu.Unlock()
 				}
 			}
 		}(i)
@@ -142,6 +176,10 @@ func (a *Analyzer) LoadPackages(dir string) error {
 	
 	// Wait for all workers to finish
 	wg.Wait()
+	
+	// Final progress bar at 100%
+	fmt.Printf("\r%s", renderProgressBar(len(allFiles), len(allFiles), "  Building", 40))
+	fmt.Println() // New line after progress bar
 	
 	return nil
 }
