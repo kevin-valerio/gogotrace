@@ -1,7 +1,5 @@
 package service
 
-import "main"
-
 type Handler struct {
 	name string
 }
