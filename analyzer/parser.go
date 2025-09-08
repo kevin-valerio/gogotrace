@@ -346,6 +346,29 @@ func (a *Analyzer) buildSignature(fn *ast.FuncDecl) string {
 	}
 	parts = append(parts, fmt.Sprintf("(%s)", strings.Join(params, ", ")))
 	
+	// Return values
+	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+		var results []string
+		for _, field := range fn.Type.Results.List {
+			resultType := a.formatType(field.Type)
+			if len(field.Names) > 0 {
+				for _, name := range field.Names {
+					results = append(results, fmt.Sprintf("%s %s", name.Name, resultType))
+				}
+			} else {
+				results = append(results, resultType)
+			}
+		}
+		
+		if len(results) == 1 && !strings.Contains(results[0], " ") {
+			// Single unnamed return value
+			parts = append(parts, results[0])
+		} else {
+			// Multiple return values or named return values
+			parts = append(parts, fmt.Sprintf("(%s)", strings.Join(results, ", ")))
+		}
+	}
+	
 	return strings.Join(parts, " ")
 }
 
@@ -392,11 +415,25 @@ func (a *Analyzer) processCallExpr(call *ast.CallExpr, caller *Function, localFu
 		targetName := fun.Name
 		
 		// First check local functions in same file
+		found := false
 		for _, fn := range localFuncs {
 			if fn.Name == targetName && fn.Receiver == "" {
 				a.addCallSite(caller, fn)
+				found = true
 				break
 			}
+		}
+		
+		// If not found locally, search globally
+		if !found {
+			a.functions.Range(func(key, value interface{}) bool {
+				fn := value.(*Function)
+				if fn.Name == targetName && fn.Receiver == "" {
+					a.addCallSite(caller, fn)
+					return false // Stop searching after first match
+				}
+				return true
+			})
 		}
 		
 	case *ast.SelectorExpr:
