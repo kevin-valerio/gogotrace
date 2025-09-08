@@ -1,5 +1,7 @@
 # GoGoTrace
 
+[![Go CI](https://github.com/kevin-valerio/gogotrace/actions/workflows/go.yml/badge.svg)](https://github.com/kevin-valerio/gogotrace/actions/workflows/go.yml)
+
 GoGoTrace is a Go reverse call‑graph analyzer. It scans a project, discovers who calls a given function or method, and renders a reverse call tree to the console, to JSON, or to an interactive HTML page. The analysis runs in parallel and is designed to handle large codebases efficiently.
 
 ## Motivations
